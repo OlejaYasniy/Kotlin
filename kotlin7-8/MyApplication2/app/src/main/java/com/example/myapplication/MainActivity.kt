@@ -1,67 +1,110 @@
 package com.example.myapplication
 
 import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
-class MainActivity : AppCompatActivity() {
-
-    private lateinit var urlInput: EditText
-    private lateinit var button: Button
-    private lateinit var imageView: ImageView
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContent {
+            MyApp()
+        }
+    }
 
-        urlInput = findViewById(R.id.urlInput)
-        button = findViewById(R.id.button)
-        imageView = findViewById(R.id.imageView)
+    @Composable
+    fun MyApp() {
+        var url by remember { mutableStateOf(TextFieldValue()) }
+        var imageBitmap by remember { mutableStateOf<Bitmap?>(null) }
+        val scope = rememberCoroutineScope()
 
-        button.setOnClickListener {
-            val url = urlInput.text.toString()
-            if (url.isNotEmpty()) {
-                downloadAndSaveImage(url)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text("Введите URL изображения") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        val bitmap = downloadImage(url.text)
+                        if (bitmap != null) {
+                            imageBitmap = bitmap
+                            saveImageToInternalStorage(bitmap)
+                        } else {
+                            Toast.makeText(this@MainActivity, "Ошибка загрузки изображения", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Загрузить и сохранить изображение")
+            }
+
+            imageBitmap?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = "Загруженное изображение",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                )
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(10) { index ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        elevation = 4.dp
+                    ) {
+                        Text(
+                            text = "Элемент #${index + 1}",
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
             }
         }
     }
 
-    private fun downloadAndSaveImage(url: String) {
-        CoroutineScope(Dispatchers.Main).launch {
-            val bitmap = downloadImage(url)
-            if (bitmap != null) {
-                imageView.setImageBitmap(bitmap)
-                imageView.visibility = ImageView.VISIBLE
-                saveImageToInternalStorage(bitmap)
-            } else {
-                Toast.makeText(this@MainActivity, "Ошибка загрузки изображения", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    suspend fun downloadImage(url: String): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun downloadImage(url: String): Bitmap? {
         val loader = ImageLoader(this@MainActivity)
         val request = ImageRequest.Builder(this@MainActivity).data(url).build()
         val result = (loader.execute(request) as? SuccessResult)?.drawable
-        (result as BitmapDrawable).bitmap
+        return (result as? BitmapDrawable)?.bitmap
     }
 
-    suspend fun saveImageToInternalStorage(bitmap: Bitmap) = withContext(Dispatchers.IO) {
-
+    private suspend fun saveImageToInternalStorage(bitmap: Bitmap) {
         val file = File(filesDir, "image.png")
         FileOutputStream(file).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
